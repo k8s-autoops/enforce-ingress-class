@@ -6,6 +6,7 @@ import (
 	"github.com/k8s-autoops/autoops"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1beta1 "k8s.io/api/networking/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"log"
@@ -14,7 +15,7 @@ import (
 )
 
 const (
-	AnnotationKeySubnet = "autoops.enforce-qcloud-internal-lb/subnet"
+	AnnotationKeyIngressClass = "autoops.enforce-ingress-class"
 )
 
 func exit(err *error) {
@@ -46,12 +47,8 @@ func main() {
 				if buf, err = request.Object.MarshalJSON(); err != nil {
 					return
 				}
-				var svc corev1.Service
-				if err = json.Unmarshal(buf, &svc); err != nil {
-					return
-				}
-				// 如果不是 LoadBalancer 则忽略
-				if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+				var ing networkingv1beta1.Ingress
+				if err = json.Unmarshal(buf, &ing); err != nil {
 					return
 				}
 				// 获取命名空间并检查特定注解
@@ -62,11 +59,11 @@ func main() {
 				if ns.Annotations == nil {
 					return
 				}
-				if ns.Annotations[AnnotationKeySubnet] == "" {
+				if ns.Annotations[AnnotationKeyIngressClass] == "" {
 					return
 				}
 				// 增加注解
-				if svc.Annotations == nil {
+				if ing.Annotations == nil {
 					*patches = append(*patches, map[string]interface{}{
 						"op":    "replace",
 						"path":  "/metadata/annotations",
@@ -75,8 +72,8 @@ func main() {
 				}
 				*patches = append(*patches, map[string]interface{}{
 					"op":    "replace",
-					"path":  "/metadata/annotations/service.kubernetes.io~1qcloud-loadbalancer-internal-subnetid",
-					"value": ns.Annotations[AnnotationKeySubnet],
+					"path":  "/metadata/annotations/kubernetes.io~1ingress.class",
+					"value": ns.Annotations[AnnotationKeyIngressClass],
 				})
 				return
 			},
